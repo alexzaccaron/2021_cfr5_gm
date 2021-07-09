@@ -1,0 +1,2 @@
+## chromosomes plot
+This is an R script that reads data from the file `chr_windows_combined.bed`, which contains gene count, amount of repetitive DNA, and GC content across the chromosomes based on sliding window of 30 kb. Another file, `genome.txt`, contains the size of the chromosomes. The R script produces a pdf file for each chromosome with gene content, repeat content, and GC content as tracks.
