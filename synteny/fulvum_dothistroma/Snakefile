@@ -1,0 +1,149 @@
+
+rule all:
+   input:
+      "output/promer_out.fplot",
+      "output/promer_out.rplot",
+      "output/promer_out.delta.filt.coords",
+      "output/promer_out.png",
+      "plot/promer_out.pdf",
+      "output/promer_out.delta.filt.coords.links"
+
+
+# ------ PART 1 MUMmer --------
+
+#========
+# call promer from MUMmer to align genomes at the protein level, which makes is more sensitive than nucmer (alignment at the nucleotide level), and useful for distant species
+rule promer:
+   conda: "env.yml"
+   input:
+      ref="data/Cfulv_R5_assembly_v4.fasta",
+      qry="data/GCA_000340195.1_Dothistroma_septosporum_NZE10_v1.0_genomic_chrs.fna"
+   output:
+      delta="output/promer_out.delta"
+   shell: """
+      promer -p "output/promer_out" {input.ref} {input.qry}
+   """
+#========
+
+
+
+#========
+# filter alignment to keep 1-to-1 alignments
+rule delta_filter:
+   conda: "env.yml"
+   input:
+      delta="output/promer_out.delta"
+   output:
+      delta="output/promer_out.delta.filt"
+   shell: """
+      delta-filter -1 {input.delta} > {output.delta}
+   """
+#========
+
+
+
+#========
+# parameter: do not print header (-H), output in tab format (-T), and sort by reference sequences (-r)
+rule show_coords:
+   conda: "env.yml"
+   input:
+      delta="output/promer_out.delta.filt"
+   output:
+      coords="output/promer_out.delta.filt.coords"
+   shell: """
+      show-coords -HTr {input.delta} > {output.coords}
+   """
+#========
+
+
+#========
+# 
+rule mummerplot:
+   conda: "env.yml"
+   input:
+      delta="output/promer_out.delta.filt"
+   output:
+      fplot="output/promer_out.fplot",
+      rplot="output/promer_out.rplot",
+      gp="output/promer_out.gp"
+   shell: """
+      mummerplot -p output/promer_out --png --color {input.delta}
+   """
+#========
+
+
+#========
+# call gnuplot to make the png file
+rule gnuplot:
+   conda: "env.yml"
+   input:
+      gp="output/promer_out.gp"
+   output:
+      png="output/promer_out.png"
+   shell: """
+      gnuplot {input.gp}
+   """
+#========
+
+
+# ------ PART 2 Generate new dot plot --------
+# in the fist part, promer was called and .rplot and .fplot files were produced. These files have the alignment coordinates in the dot plot produced. These two files
+# are read to produce a new dot plot using R.
+
+#========
+# calling samtools faidx to calculate the size of chromosomes
+rule faidx:
+   conda: "env.yml"
+   input:
+      ref="data/Cfulv_R5_assembly_v4.fasta",
+      qry="data/GCA_000340195.1_Dothistroma_septosporum_NZE10_v1.0_genomic_chrs.fna"
+   output:
+      ref="data/Cfulv_R5_assembly_v4.fasta.fai",
+      qry="data/GCA_000340195.1_Dothistroma_septosporum_NZE10_v1.0_genomic_chrs.fna.fai"
+   shell: """
+      samtools faidx {input.ref}
+      samtools faidx {input.qry}
+   """
+#========
+
+
+
+#========
+# 
+rule new_dotplot:
+   conda: "env.yml"
+   input:
+      fplot="output/promer_out.fplot",
+      rplot="output/promer_out.rplot",
+      ref_fai="data/Cfulv_R5_assembly_v4.fasta.fai",
+      qry_fai="data/GCA_000340195.1_Dothistroma_septosporum_NZE10_v1.0_genomic_chrs.fna.fai"
+   output:
+      dotplot="plot/promer_out.pdf",
+   shell: """
+      Rscript scripts/make_dotplot.R {input.fplot} {input.rplot} {input.ref_fai} {input.qry_fai} {output.dotplot}
+   """
+#========
+
+
+
+
+# ------ PART 3 Generate a circos plot --------
+# here, the .coords file produced by promer/show-coords is used to produce a circos plot, which is more visually apealing than an old-school dotplot
+#========
+# R script to convert .coords file to a links file readable by circos
+rule coords_to_links:
+   conda: "env.yml"
+   input:
+      coords="output/promer_out.delta.filt.coords"
+   output:
+      links="output/promer_out.delta.filt.coords.links"
+   shell: """
+      Rscript scripts/coords_to_links.R {input.coords} {output.links}
+   """
+#========
+
+
+#========
+# call circos
+
+#========
