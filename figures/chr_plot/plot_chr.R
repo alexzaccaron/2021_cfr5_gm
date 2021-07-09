@@ -87,26 +87,3 @@ for(i in 1:length(pallet_rept)){
 }
 rect(1,1,101,2, lwd=0.5)
 dev.off()
-
-
-
-
-min(1-cumsum(dhyper(0:(17-1),345,(14690-345),394)))
-binom.test(250, 13743,p=345/(14690-345))
-binom.test(80, 100,p=0.5)
-
-counts = (matrix(data = c(66, 947, 345, 14690-345), nrow = 2))
-
-fisher.test(counts)
-
-chisq.test(counts)
-
-phyper(17, 345, 14690-345, 377)
-
-
-
-observed = c(770, 230)        # observed frequencies
-expected = c(0.75, 0.25)      # expected proportions
-
-chisq.test(x = observed,
-           p = expected)
