@@ -1,12 +1,39 @@
 
 rule all:
    input:
+      "data/GCA_000340195.1_Dothistroma_septosporum_NZE10_v1.0_genomic_chrs.fna",
       "output/promer_out.fplot",
       "output/promer_out.rplot",
       "output/promer_out.delta.filt.coords",
       "output/promer_out.png",
-      "plot/promer_out.pdf",
-      "output/promer_out.delta.filt.coords.links"
+      #"plot/promer_out.pdf",
+      #"output/promer_out.delta.filt.coords.links"
+
+# ------ PART 0 getting genome --------
+#========
+rule download_assembly:
+   output:
+      "data/GCA_000340195.1_Dothistroma_septosporum_NZE10_v1.0_genomic.fna"
+   shell: """
+      curl ftp://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/340/195/GCA_000340195.1_Dothistroma_septosporum_NZE10_v1.0//GCA_000340195.1_Dothistroma_septosporum_NZE10_v1.0_genomic.fna.gz -o data/GCA_000340195.1_Dothistroma_septosporum_NZE10_v1.0_genomic.fna.gz
+
+      gunzip -c data/GCA_000340195.1_Dothistroma_septosporum_NZE10_v1.0_genomic.fna.gz > {output}
+   """
+#========
+
+
+
+#========
+rule filter_assembly:
+   conda: "env.yml"
+   input: 
+      "data/GCA_000340195.1_Dothistroma_septosporum_NZE10_v1.0_genomic.fna"
+   output:
+      "data/GCA_000340195.1_Dothistroma_septosporum_NZE10_v1.0_genomic_chrs.fna"
+   shell: """
+       reformat.sh in={input} out={output} minlength=10000
+   """
+#========
 
 
 # ------ PART 1 MUMmer --------
