@@ -6,8 +6,9 @@ rule all:
       "output/promer_out.rplot",
       "output/promer_out.delta.filt.coords",
       "output/promer_out.png",
-      #"plot/promer_out.pdf",
-      #"output/promer_out.delta.filt.coords.links"
+      "plot/promer_out.pdf",
+      "output/promer_out.delta.filt.coords.links",
+      "plot/circos.png"
 
 # ------ PART 0 getting genome --------
 #========
@@ -172,5 +173,16 @@ rule coords_to_links:
 
 #========
 # call circos
-
+rule circos:
+   conda: "env.yml"
+   input:
+      links="output/promer_out.delta.filt.coords.links"
+   output:
+      "plot/circos.png"
+   shell: """
+      cp {input} circos/links.txt
+      cd circos
+      circos
+      cp circos.png circos.svg ../plot/
+   """
 #========

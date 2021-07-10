@@ -1,0 +1,142 @@
+
+rule all:
+   input:
+      "output/nucmer_out.delta.filt",
+      "output/nucmer_out.delta.filt.coords",
+      "output/nucmer_out.png",
+      "plot/nucmer_out.pdf"
+
+
+
+
+
+# ------ PART 0 getting genome --------
+#========
+rule download_assembly:
+   output:
+      "data/GCA_000301015.1_CfCabog12_genomic.fna"
+   shell: """
+      curl https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/301/015/GCA_000301015.1_CfCabog12/GCA_000301015.1_CfCabog12_genomic.fna.gz -o data/GCA_000301015.1_CfCabog12_genomic.fna.gz
+
+      gunzip -c data/GCA_000301015.1_CfCabog12_genomic.fna.gz > {output}
+   """
+#========
+
+
+
+# ------ PART 1 MUMmer --------
+
+#========
+# call promer from MUMmer to align genomes at the protein level, which makes is more sensitive than nucmer (alignment at the nucleotide level), and useful for distant species
+rule promer:
+   conda: "env.yml"
+   input:
+      ref="data/Cfulv_R5_assembly_v4.fasta",
+      qry="data/GCA_000301015.1_CfCabog12_genomic.fna"
+   output:
+      delta="output/nucmer_out.delta"
+   shell: """
+      nucmer -t 8 -p "output/nucmer_out" {input.ref} {input.qry}
+   """
+#========
+
+
+
+#========
+# filter alignment to keep 1-to-1 alignments
+rule delta_filter:
+   conda: "env.yml"
+   input:
+      delta="output/nucmer_out.delta"
+   output:
+      delta="output/nucmer_out.delta.filt"
+   shell: """
+      delta-filter -1 {input.delta} > {output.delta}
+   """
+#========
+
+
+#========
+# parameter: do not print header (-H), output in tab format (-T), and sort by reference sequences (-r)
+rule show_coords:
+   conda: "env.yml"
+   input:
+      delta="output/nucmer_out.delta.filt"
+   output:
+      coords="output/nucmer_out.delta.filt.coords"
+   shell: """
+      show-coords -HTr {input.delta} > {output.coords}
+   """
+#========
+
+
+
+#========
+# 
+rule mummerplot:
+   conda: "env.yml"
+   input:
+      delta="output/nucmer_out.delta.filt"
+   output:
+      fplot="output/nucmer_out.fplot",
+      rplot="output/nucmer_out.rplot",
+      gp="output/nucmer_out.gp"
+   shell: """
+      mummerplot -p output/nucmer_out --layout --png --color {input.delta}
+   """
+#========
+
+
+
+#========
+# call gnuplot to make the png file
+rule gnuplot:
+   conda: "env.yml"
+   input:
+      gp="output/nucmer_out.gp"
+   output:
+      png="output/nucmer_out.png"
+   shell: """
+      gnuplot {input.gp}
+   """
+#========
+
+
+
+# ------ PART 2 Generate new dot plot --------
+# in the fist part, promer was called and .rplot and .fplot files were produced. These files have the alignment coordinates in the dot plot produced. These two files
+# are read to produce a new dot plot using R.
+
+#========
+# calling samtools faidx to calculate the size of chromosomes
+rule faidx:
+   conda: "env.yml"
+   input:
+      ref="data/Cfulv_R5_assembly_v4.fasta",
+      qry="data/GCA_000301015.1_CfCabog12_genomic.fna"
+   output:
+      ref="data/Cfulv_R5_assembly_v4.fasta.fai",
+      qry="data/GCA_000301015.1_CfCabog12_genomic.fna.fai"
+   shell: """
+      samtools faidx {input.ref}
+      samtools faidx {input.qry}
+   """
+#========
+
+
+
+#========
+# 
+rule new_dotplot:
+   conda: "env.yml"
+   input:
+      fplot="output/nucmer_out.fplot",
+      rplot="output/nucmer_out.rplot",
+      ref_fai="data/Cfulv_R5_assembly_v4.fasta.fai",
+      qry_fai="data/GCA_000301015.1_CfCabog12_genomic.fna.fai"
+   output:
+      dotplot="plot/nucmer_out.pdf",
+   shell: """
+      Rscript scripts/make_dotplot.R {input.fplot} {input.rplot} {input.ref_fai} {input.qry_fai} {output.dotplot}
+   """
+#========
