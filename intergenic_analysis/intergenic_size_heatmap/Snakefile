@@ -1,0 +1,53 @@
+
+
+SAMPLES=["Cfulv_R5_assembly_v4_genes_v05"]#, "Clafu1"#, "EnE101_chr_assembly_v3", "GCF_000230375.1_ASM23037v1", "GCF_000150675.1_ASM15067v2", "GCA_012295175.1_ASM1229517v1", "GCF_000340215.1_Mycfi2"]
+
+rule all:
+   input:
+      expand("plots/{sample}_intergenic_heatmap.pdf", sample=SAMPLES)
+
+
+rule get_genes_bed:
+   input: "data/{sample}.gff"
+   output: "data/{sample}_onlygenes.bed"
+   shell: """
+      awk '$3=="gene"' {input} | sort -k1,1 -k4,4n | sed 's/ID=//g' | sed 's/;.*//g' | awk '{{print $1"\t"$4-1"\t"$5"\t"$9"\t.\t"$7}}' > {output}
+   """
+
+rule bed_complement:
+   conda: "env.yml"
+   input: 
+      genome="data/{sample}.genome.txt", 
+      bed="data/{sample}_onlygenes.bed"
+   output: "data/{sample}_complement.bed"
+   shell: """
+      sort -k1,1 {input.genome} | bedtools complement -i {input.bed} -g - > {output}
+   """
+
+
+rule get_intergenic_regions:
+   conda: "env.yml"
+   input: 
+      genes="data/{sample}_onlygenes.bed",
+      complement="data/{sample}_complement.bed"
+   output: 
+      upstream="data/{sample}_intergenic_upstream.bed",
+      downstream="data/{sample}_intergenic_downstream.bed"
+   shell: """
+      bedtools closest -a {input.genes} -b {input.complement} -t first -D a -id > {output.upstream}
+      bedtools closest -a {input.genes} -b {input.complement} -t first -D a -iu > {output.downstream}
+   """
+
+
+rule plot_heatmap:
+   conda: "env.yml"
+   input: 
+      upstream="data/{sample}_intergenic_upstream.bed",
+      downstream="data/{sample}_intergenic_downstream.bed",
+      genes="data/{sample}_genes_interest.txt"
+   output: 
+      plot="plots/{sample}_intergenic_heatmap.pdf",
+      table="data/{sample}_intergenic_table.txt"
+   shell: """
+      Rscript scripts/plot_intergenic_heatmap.R {input.upstream} {input.downstream} {output.plot} {input.genes} {output.table}
+   """
