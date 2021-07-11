@@ -1,0 +1,123 @@
+
+DISTANCES=[1000,2000,3000,4000,5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 13000, 14000, 15000, 16000, 17000, 18000, 19000, 20000]
+
+rule all:
+   input:
+      expand("output/{distance}_Cfulv_R5_assembly_v4_onlygenes_v05_cluster.gff", distance=DISTANCES),
+      expand("output/{distance}_Cfulv_R5_assembly_v4_onlygenes_v05_cluster_summ.txt", distance=DISTANCES),
+      expand("output/{distance}_Cfulv_R5_assembly_v4_onlygenes_v05_cluster_summ.bed", distance=DISTANCES),
+      expand("output/{distance}_Cfulv_R5_assembly_v4_intergenic_v05_cluster_coverage.bed", distance=DISTANCES),
+      expand("output/{distance}_Cfulv_R5_assembly_v4_intergenic_v05_cluster_coverage_repeats.bed", distance=DISTANCES),
+
+
+#============
+# getting only the gene features from the GFF
+rule get_genes:
+   input: 
+      "data/Cfulv_R5_assembly_v4_genes_v05.gff.gz"
+   output:
+      "output/Cfulv_R5_assembly_v4_onlygenes_v05.gff"
+   shell: """
+       gunzip -c {input} | awk '$3=="gene"' | sed 's/ID=.*;Name=//g' > {output}
+   """
+#===========
+
+
+
+#============
+# calling bedtools to perform clustering of genes based on different distances
+rule clustering:
+   conda: "env.yml"
+   input: 
+      "output/Cfulv_R5_assembly_v4_onlygenes_v05.gff"
+   output:
+      "output/{distance}_Cfulv_R5_assembly_v4_onlygenes_v05_cluster.gff"
+   shell: """
+       bedtools cluster -i {input} -d {wildcards.distance} > {output}
+   """
+#===========
+
+
+
+#===========
+# call bedtools groupby to get clusters coordinates (chr, start and end), and number of genes within each cluster
+rule summarize_clusters:
+   conda: "env.yml"
+   input: 
+      "output/{distance}_Cfulv_R5_assembly_v4_onlygenes_v05_cluster.gff"
+   output:
+      "output/{distance}_Cfulv_R5_assembly_v4_onlygenes_v05_cluster_summ.txt"
+   shell: """
+       cat {input} | bedtools groupby -g 10 -c 1,4,5,9 -o first,min,max,count > {output}
+   """
+#===========
+
+
+
+#===========
+# convert the summarized clusters produced with groupby to bed format
+rule cluster_summ_to_bed:
+   conda: "env.yml"
+   input: 
+      "output/{distance}_Cfulv_R5_assembly_v4_onlygenes_v05_cluster_summ.txt"
+   output:
+      "output/{distance}_Cfulv_R5_assembly_v4_onlygenes_v05_cluster_summ.bed"
+   shell: """
+       awk  -v OFS="\t" '{{print $2,$3,$4,$1}}' {input} > {output}
+   """
+#===========
+
+
+
+#===========
+# getting intergenic regions, which are the complement of genome and genes (i.e., genome minus genes)
+rule get_intergenic:
+   conda: "env.yml"
+   input: 
+      genome="data/Cfulv_R5_assembly_v4_genes_v05.genome.txt", 
+      genes="output/Cfulv_R5_assembly_v4_onlygenes_v05.gff"
+   output:
+      "output/Cfulv_R5_assembly_v4_intergenic_v05.gff"
+   shell: """
+      sort -k1,1 {input.genome} | bedtools complement -i {input.genes} -g - > {output}
+   """
+#===========
+
+
+
+#===========
+# finding out which intergenic regions flank the clusters
+# intergenic with zero coverage are flanking clusters, intergenic with 100% coverage are within clusters
+rule get_flanking_intergenic:
+   conda: "env.yml"
+   input: 
+      intergenic="output/Cfulv_R5_assembly_v4_intergenic_v05.gff",
+      clusters="output/{distance}_Cfulv_R5_assembly_v4_onlygenes_v05_cluster_summ.bed"
+   output:
+      "output/{distance}_Cfulv_R5_assembly_v4_intergenic_v05_cluster_coverage.bed"
+   shell: """
+      bedtools coverage -a {input.intergenic} -b {input.clusters} > {output}
+   """
+#===========
+
+
+
+#===========
+# 
+rule get_intergenic_repeat_perc:
+   conda: "env.yml"
+   input: 
+      intergenic="output/{distance}_Cfulv_R5_assembly_v4_intergenic_v05_cluster_coverage.bed",
+      repeats="data/Cfulv_R5_assembly_v4.fasta.out.gff.gz"
+   output:
+      intergenic="output/{distance}_Cfulv_R5_assembly_v4_intergenic_v05_cluster_coverage_repeats.bed"
+   shell: """
+      gunzip -c {input.repeats} | bedtools coverage -a {input.intergenic} -b stdin > {output.intergenic}
+   """
+#===========
+
+
+
+
+
+
