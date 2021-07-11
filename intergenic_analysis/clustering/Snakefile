@@ -48,7 +48,7 @@ rule summarize_clusters:
    output:
       "output/{distance}_Cfulv_R5_assembly_v4_onlygenes_v05_cluster_summ.txt"
    shell: """
-       cat {input} | bedtools groupby -g 10 -c 1,4,5,9 -o first,min,max,count > {output}
+       cat {input} | bedtools groupby -g 10 -c 1,4,5,9,9,9 -o first,min,max,count,first,last > {output}
    """
 #===========
 

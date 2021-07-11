@@ -2,9 +2,10 @@
 
 This Snakefile uses BEDtools to crate clusters based on different distances thresholds (`-d`).
 
-Run the Snakefile, then call the Rscripts in `scripts` to make the plots, passing filenames as arguments
+Run the Snakefile, then call the Rscripts in `scripts` to make the plots
 
 ```r
-Rscript scripts/plot_clusters_count.R plot1.pdf
-Rscript scripts/plot_coverage_size plot2.pdf plot3.pdf
+snamekmake -j 2 --use-conda
+Rscript scripts/plot_clusters_summaries.R
+Rscript scripts/plot_intergenic_size_repeat_content.R
 ```
