@@ -1,0 +1,10 @@
+#File	data/cFDNA_S1_L002_R1_001.fastq.gz	data/cFDNA_S1_L002_R2_001.fastq.gz
+#Total	97411394
+#Matched	7343826	7.53898%
+#Name	Reads	ReadsPct
+tig00000039 len=179077 reads=1706 covStat=-910.16 gappedBases=no class=contig suggestRepeat=no suggestCircular=no	7338090	7.53309%
+tig00004031 len=6025800 reads=3775 covStat=8007.34 gappedBases=no class=contig suggestRepeat=no suggestCircular=yes	2838	0.00291%
+tig00000001 len=5821070 reads=8323 covStat=4495.75 gappedBases=no class=contig suggestRepeat=no suggestCircular=yes	2590	0.00266%
+tig00000081 len=19825 reads=5 covStat=8.66 gappedBases=no class=contig suggestRepeat=no suggestCircular=no	159	0.00016%
+tig00000044 len=32603 reads=6 covStat=15.61 gappedBases=no class=contig suggestRepeat=no suggestCircular=no	147	0.00015%
+tig00000035 len=647739 reads=1106 covStat=330.42 gappedBases=no class=contig suggestRepeat=no suggestCircular=yes	2	0.00000%

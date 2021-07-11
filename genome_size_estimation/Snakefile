@@ -1,0 +1,40 @@
+
+rule all:
+   input:
+      "output/kmercountexact_peaks.txt"
+
+
+
+#=========
+# decontaminate reads
+rule bbduk:
+   conda: "env.yml"
+   input:
+      r1="data/cFDNA_S1_L002_R1_001.fastq.gz",
+      r2="data/cFDNA_S1_L002_R2_001.fastq.gz",
+      contaminant="data/contaminants.fasta",
+   output:
+      r1="output/cFDNA_S1_L002_R1_001_bbduk.fastq.gz",
+      r2="output/cFDNA_S1_L002_R2_001_bbduk.fastq.gz",
+      stats="output/bbduk_stats.txt",
+   shell: """
+      bbduk.sh -Xmx40g threads=16 in={input.r1} in2={input.r2} ref={input.contaminant} out={output.r1} out2={output.r2}  k=31 hdist=1 stats={output.stats}
+   """
+#=========
+
+
+
+#=========
+# count kmers and estimate genome size
+rule kmercountexact:
+   conda: "env.yml"
+   input:
+      r1="output/cFDNA_S1_L002_R1_001_bbduk.fastq.gz",
+      r2="output/cFDNA_S1_L002_R2_001_bbduk.fastq.gz",
+   output:
+      khist="output/kmercountexact_khist.txt",
+      peaks="output/kmercountexact_peaks.txt",
+   shell: """
+      kmercountexact.sh k=31 threads=16 in={input.r1} in2={input.r2} khist={output.khist} peaks={output.peaks}
+   """
+#=========
