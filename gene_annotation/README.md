@@ -262,3 +262,25 @@ perl /home/azacca/programs/gmes_linux_64/gmes_petap.pl --ET $INTRONS --evidence 
 ```
 
 And the `gmhmm.mod` file was generated. This file is given to Maker.
+
+### Maker round 2
+
+With the ab initio gene predictors trained, Maker was executed once more to predict genes. Parameters adjusted:
+
+```
+#-----EST Evidence
+est=path/to/transcriptome.fasta
+
+#-----Protein Homology Evidence
+protein=data/GCF_000219625.1_MYCGR_v2.0_protein.faa,data/GCF_002742065.1_CB0940_V2_protein.faa
+
+#-----Repeat Masking
+rm_gff=path/to/repeatmasker.out.gff
+
+#-----Gene Prediction
+snaphmm=path/to/cladosporium_fulvum.hmm
+gmhmm=path/to/gmhmm.mod
+augustus_species=cladosporium_fulvum
+pred_gff=path/to/gemoma.gffs
+```
+
