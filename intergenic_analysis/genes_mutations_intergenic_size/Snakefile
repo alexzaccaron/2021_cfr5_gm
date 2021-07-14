@@ -1,0 +1,72 @@
+rule all:
+   input:
+      "data/snpEff_genes_rready.txt",
+      "data/Cfulv_R5_assembly_v4_genes_v05_intergenic_upstream.bed",
+      "data/Cfulv_R5_assembly_v4_genes_v05_intergenic_downstream.bed",
+      "data/intergenic.txt"
+
+
+
+#=======
+# make file good to read in R
+rule prepare_snpeff_table:
+   input:
+      "data/snpEff_genes.txt"
+   output:
+      "data/snpEff_genes_rready.txt"
+   shell: """
+      tail -n+2 {input} | sed 's/^#//g' > {output}
+   """
+#=======
+
+
+
+
+rule get_genes_bed:
+   input: "data/Cfulv_R5_assembly_v4_genes_v05.gff"
+   output: "data/Cfulv_R5_assembly_v4_genes_v05_onlygenes.bed"
+   shell: """
+      awk '$3=="gene"' {input} | sort -k1,1 -k4,4n | sed 's/ID=//g' | sed 's/;.*//g' | awk '{{print $1"\t"$4-1"\t"$5"\t"$9"\t.\t"$7}}' > {output}
+   """
+
+
+rule bed_complement:
+   conda: "env.yml"
+   input: 
+      genome="data/Cfulv_R5_assembly_v4_genes_v05.genome.txt", 
+      bed="data/Cfulv_R5_assembly_v4_genes_v05_onlygenes.bed"
+   output: 
+      "data/Cfulv_R5_assembly_v4_genes_v05_complement.bed"
+   shell: """
+      sort -k1,1 {input.genome} | bedtools complement -i {input.bed} -g - > {output}
+   """
+
+
+rule get_intergenic_regions:
+   conda: "env.yml"
+   input: 
+      genes="data/Cfulv_R5_assembly_v4_genes_v05_onlygenes.bed",
+      complement="data/Cfulv_R5_assembly_v4_genes_v05_complement.bed"
+   output: 
+      upstream="data/Cfulv_R5_assembly_v4_genes_v05_intergenic_upstream.bed",
+      downstream="data/Cfulv_R5_assembly_v4_genes_v05_intergenic_downstream.bed"
+   shell: """
+      bedtools closest -a {input.genes} -b {input.complement} -t first -D a -id > {output.upstream}
+      bedtools closest -a {input.genes} -b {input.complement} -t first -D a -iu > {output.downstream}
+   """
+
+
+rule combine_intergenic_regions:
+   conda: "env.yml"
+   input: 
+      upstream="data/Cfulv_R5_assembly_v4_genes_v05_intergenic_upstream.bed",
+      downstream="data/Cfulv_R5_assembly_v4_genes_v05_intergenic_downstream.bed"
+   output:
+      "data/intergenic.txt"
+      
+   shell: """
+      (echo GeneId$'\t'upstream_start$'\t'upstream_end$'\t'downstream_start$'\t'downstream_end;
+      cat {input.upstream} {input.downstream} | sort -k4,4 -k10,10n | bedtools groupby -g 4 -c 8,9,8,9   -o first,first,last,last) > {output}
+   """
+
+
