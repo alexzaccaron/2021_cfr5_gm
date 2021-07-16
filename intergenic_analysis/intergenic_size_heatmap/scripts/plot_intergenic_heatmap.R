@@ -5,6 +5,7 @@ out_plot_fname              = ''
 
 
 library(ggplot2)
+library(ggrepel)
 
 #=== command line arguments ===
 args = commandArgs(trailingOnly = TRUE)
@@ -27,7 +28,8 @@ intergenic_downstream = read.table(intergenic_downstream_fname,
 )
 #genes_interest = read.table( genes_interest_fname, col.names=c("gene_id","class") )
 #genes_interest = subset(genes_interest, class == "CEP")[,'gene_id'] # select candidate effectors
-genes_interest = readLines( genes_interest_fname)
+
+genes_interest = read.table( genes_interest_fname, col.names=c("gene_id", "gene_name", "gene_name_label"), fill=T)
 #====================
 
 
@@ -57,7 +59,8 @@ intergenic$inter_down_len = log10(intergenic$inter_down_len)
 
 
 #=== get intergenic of genes of interest ===
-genes_interest = intergenic[intergenic$gene_id %in% genes_interest,]
+genes_interest_ids = intergenic[intergenic$gene_id %in% genes_interest$gene_id,]
+genes_interest_ids = merge(genes_interest_ids, genes_interest, by="gene_id")
 #===========
 
 
@@ -76,7 +79,9 @@ ggplot(intergenic, aes(x=inter_up_len, y=inter_down_len) ) +
   xlim(0,6) + ylim(0,6) +
   #scale_x_continuous(labels = axlabels) +
   #scale_y_continuous(labels = axlabels) +
-  geom_point(data = genes_interest, fill = "orange", col = 'black', shape = 21, size=1, alpha=0.8) +
+  geom_point(genes_interest_ids, mapping = aes(x=inter_up_len, y=inter_down_len), fill = "orange", col = 'black', shape = 21, size=1, alpha=0.8) + 
+  geom_text_repel(genes_interest_ids, mapping = aes(x=inter_up_len, y=inter_down_len, label=gene_name_label), max.overlaps = 999) +
+  #geom_label(genes_interest_ids, mapping = aes(x=inter_up_len, y=inter_down_len, label=gene_name_label), fill=NA, label.size = NA, hjust = 0, vjust = 0) +
   theme_bw()
 dev.off()
 

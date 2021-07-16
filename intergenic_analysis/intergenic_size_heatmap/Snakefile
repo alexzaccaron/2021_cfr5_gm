@@ -4,7 +4,11 @@ SAMPLES=["Cfulv_R5_assembly_v4_genes_v05"]#, "Clafu1"#, "EnE101_chr_assembly_v3"
 
 rule all:
    input:
+#      "data/intergenic_upstream_repeats.bed", 
+#      "data/intergenic_downstream_repeats.bed", 
       expand("plots/{sample}_intergenic_heatmap.pdf", sample=SAMPLES)
+#      "plots/intergenic_violin_length.pdf",
+#      "plots/intergenic_violin_repeat.pdf"
 
 
 rule get_genes_bed:
