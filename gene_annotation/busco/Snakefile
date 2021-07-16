@@ -1,0 +1,7 @@
+rule busco:
+   conda: "env.yml"
+   input: "data/"
+   output: directory("busco_out")
+   shell: """
+      busco -i {input} -l capnodiales --cpu 12 -o {output} -m proteins
+   """
