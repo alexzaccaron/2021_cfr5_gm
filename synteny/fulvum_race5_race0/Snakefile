@@ -1,16 +1,297 @@
 
 rule all:
    input:
-      "output/nucmer_out.delta.filt",
-      "output/nucmer_out.delta.filt.coords",
-      "output/nucmer_out.png",
-      "plot/nucmer_out.pdf"
+      #== add these files to `data/`
+      "data/Cfulv_R5_assembly_v4.fasta",         #C. fulvum 0WU from JGI
+      "data/Clafu1_AssemblyScaffolds.fasta",     #C. fulvum Race5
+      "data/Cfulv_R5_assembly_v4_genes_v05.gff", #C. fulvum Race5 gene annotation
+      "data/Cfulv_R5_assembly_v4_genes_v05.fasta", #C. fulvum Race5 gene in fasta format
+      
+      #== these files should be produced
+      "blastdb_built",
+      "output/Cfulv_R5_assembly_v4_genes_v05_missing.txt",
+      "output/minimap2_out.vcf",
+      "plots_done"
+ 
+
+#---
+# C. fulvum 0WU assembly from JGI is not automatically downloadable. Get it from the website (requires an account)
+#---
+
+
+# ------ PART 1 BLASTn genes --------
+# BLASTn genes and get genes that do not have a hit, i.e., are absent
+
+#========
+# make a blast db
+rule makeblastdb:
+   conda: "env.yml"
+   input:
+      scaff="data/Clafu1_AssemblyScaffolds.fasta"
+   output:
+      touch("blastdb_built") # flag for the db
+   shell: """
+      makeblastdb -in {input.scaff} -dbtype nucl
+   """
+#========
 
 
 
+#========
+# run blast. Note that blast hits that do not cover 50% of the query are not reported (pipe to `awk`)
+rule blastn:
+   conda: "env.yml"
+   input:
+      "blastdb_built",
+      genes="data/Cfulv_R5_assembly_v4_genes_v05.fasta",
+      scaff="data/Clafu1_AssemblyScaffolds.fasta"
+   output:
+      "output/Cfulv_R5_assembly_v4_genes_v05_blast_out"
+   shell: """
+      blastn -query {input.genes} -db {input.scaff} \
+         -evalue 1e-5 \
+         -max_target_seqs 1 \
+         -max_hsps 1 \
+         -outfmt "6 qseqid sseqid pident length qlen evalue" \
+         -num_threads 6 | awk '$5/$4>=0.5' > {output}
+   """
+#========
+
+
+
+#========
+# get ID of the missing genes (no BLASTn hit). Not the best way to do it, but it works
+rule get_missing_genes:
+   conda: "env.yml"
+   input:
+      genes="data/Cfulv_R5_assembly_v4_genes_v05.fasta",
+      blast_out="output/Cfulv_R5_assembly_v4_genes_v05_blast_out"
+   output:
+      missing="output/Cfulv_R5_assembly_v4_genes_v05_missing.txt"
+   shell: """
+      grep "^>" {input.genes} | tr -d '>' | awk '{{print $1}}' | while read ID; do grep -m1 -q $ID output/Cfulv_R5_assembly_v4_genes_v05_blast_out || echo $ID; done > {output.missing}
+   """
+#========
+
+
+
+#========
+# 
+rule get_missing_genes_gff:
+   conda: "env.yml"
+   input:
+      missing="output/Cfulv_R5_assembly_v4_genes_v05_missing.txt",
+      gff="data/Cfulv_R5_assembly_v4_genes_v05.gff",
+   output:
+      gff="output/Cfulv_R5_assembly_v4_genes_v05_missing.gff"
+   shell: """
+      grep -f {input.missing} {input.gff}  | awk '$3=="gene"' >  {output.gff}
+   """
+#========
+
+
+
+
+# ------ PART 2 align with minimap2 --------
+# use minimap2 to map contigs to the reference chromosome
+
+#========
+# split scaffolds into contigs
+rule splitasm:
+   conda: "env.yml"
+   input:
+      scaff="data/Clafu1_AssemblyScaffolds.fasta"
+   output:
+      tigs="data/Clafu1_AssemblyScaffolds_split.fasta",
+      agp="data/Clafu1_AssemblyScaffolds_split.apg"
+   params:
+      n=10 # minimum gap size 
+   shell: """
+      ragtag.py splitasm -n {params.n} {input.scaff} -o {output.agp} > {output.tigs}
+   """
+#========
+
+
+
+#========
+# mapping R0 contigs to R5 assembly with minimap2.
+# parameters used:
+#    -c: output CIGAR string 
+#    -x asm10: preset parameters for genome alignment with ~1% divergence. Other options are asm5 (~0.1%) and asm20 (~5%)
+#    --cs: output cs flag. Required for paftools to call variants downstream.
+# Also running the alignment again to output in SAM format. Note: there's no package to convert PAF to SAM, as lh3 [stated](https://github.com/lh3/minimap2/issues/493#issuecomment-540531915).
+rule minimap2:
+   conda: "env.yml"
+   input:
+      ref="data/Cfulv_R5_assembly_v4.fasta",
+      asm="data/Clafu1_AssemblyScaffolds_split.fasta",
+   output:
+      paf="output/minimap2_out.paf",
+      sam="output/minimap2_out.sam"
+   shell: """
+      minimap2 -cx asm10 --cs -t 12 {input.ref} {input.asm} > {output.paf}
+      minimap2 -ax asm10      -t 12 {input.ref} {input.asm} > {output.sam}
+   """
+#=========
+
+
+
+#=====
+# calling paftools.js, which is part of minimap2, to call variants from the PAF file. 
+# command to call vatiants from minimap2 [manual](https://github.com/lh3/minimap2/blob/master/cookbook.md#calling-variants-from-assembly-to-reference-alignment)
+# For short-read assembly, parameters `l` and `L` should be [reduced](https://github.com/lh3/minimap2/blob/master/misc/README.md#calling-variants-from-haploid-assemblies).
+rule paftools:
+   conda: "env.yml"
+   input:
+      paf="output/minimap2_out.paf",
+      ref="data/Cfulv_R5_assembly_v4.fasta",
+   output:
+      vcf="output/minimap2_out.vcf"
+   params:
+      l=2000, # min alignment length to compute coverage [10000]
+      L=2000 # min alignment length to call variants [50000]
+   shell: """
+      sort -k6,6 -k8,8n {input.paf} | paftools.js call -l {params.l} -L {params.L} -f {input.ref} - > {output.vcf}
+   """
+#=====
+
+
+
+#=========
+rule filt_sam:
+   conda: "env.yml"
+   input:
+      sam="output/minimap2_out.sam"
+   output:
+      sam="output/minimap2_out_filt.sam"
+   params:
+      flag=260 # filter reads unmapped or not primary alignments, but keep supplementary alignments
+   shell: """
+      samtools view -h -F {params.flag} {input.sam} -o {output.sam}
+   """
+#=========
+
+
+
+#=====
+rule samtobam:
+   conda: "env.yml"
+   input:
+      sam="output/minimap2_out_filt.sam"
+   output:
+      bam="output/minimap2_out_filt.bam"
+   shell: """
+      samtools sort {input.sam} -o {output.bam}
+   """
+#=====
+
+
+
+#========
+# calling samtools faidx to calculate the size of chromosomes
+rule faidx:
+   conda: "env.yml"
+   input:
+      genome="data/Cfulv_R5_assembly_v4.fasta",
+   output:
+      faidx="data/Cfulv_R5_assembly_v4.fasta.fai",
+   shell: """
+      samtools faidx {input.genome}
+   """
+#========
+
+
+
+#========
+# calculate coverage of the genome. 
+rule genomecov:
+   conda: "env.yml"
+   input:
+      bam="output/minimap2_out_filt.bam"
+   output:
+      cov_detail="output/minimap2_out_filt_cov.bed",
+      cov_summ="output/minimap2_out_filt_cov_chr.bed"
+   params:
+      max=1, # this will limit coverage histogram to only 0 (no coverage) or 1 (coverage)
+      bga="-bga",  #Report depth in BedGraph format
+      split="-split" # Treat “split” BAM or BED12 entries as distinct BED intervals when computing coverage
+   shell: """
+      bedtools genomecov -ibam {input.bam} {params.bga} {params.split} > {output.cov_detail}
+      bedtools genomecov -ibam {input.bam} -max {params.max}           > {output.cov_summ}
+   """
+#========
+
+
+
+#========
+# Determining the coverage of genes. The idea is that genes with no coverage are missing from the assembly
+# and likely missing from the genome as well (unless present but not assembled)
+rule bedtools_coverage_genes:
+   conda: "env.yml"
+   input:
+      gff="data/Cfulv_R5_assembly_v4_genes_v05.gff",
+      bam="output/minimap2_out_filt.bam"
+   output:
+      bed="output/minimap2_out_filt_genes_cov.bed"
+   shell: """
+      awk '$3=="gene"' {input.gff} | bedtools coverage -a stdin -b {input.bam} > {output.bed}
+   """
+#========
+
+
+
+
+# ------ PART 3 plot chromosomes --------
+# make plots showing portions of the chromosomes covered by contigs mapped with minimap, and point to genes missing (no blast hit)
+
+
+#========
+rule plot_chr_cov:
+   conda: "env.yml"
+   input:
+      cov_detail="output/minimap2_out_filt_cov.bed",
+      faidx="data/Cfulv_R5_assembly_v4.fasta.fai",
+      gff="output/Cfulv_R5_assembly_v4_genes_v05_missing.gff"
+   output:
+      dir=directory("plots/"),
+      flag=touch("plots_done")
+   shell: """
+      Rscript scripts/plot_chr_cov.R {input.cov_detail} {input.faidx} {input.gff} {output.dir}
+   """
+#========
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# -------------------------------
+# ------ Graveyard of rules -----
+# -------------------------------
 
 
 # ------ PART 0 getting genome --------
+# assembly from NCBI is not identical to JGI version. Assembly from JGI has one more contig. The rest appear the same. I don't know why this is
 #========
 rule download_assembly:
    output:
@@ -21,7 +302,6 @@ rule download_assembly:
       gunzip -c data/GCA_000301015.1_CfCabog12_genomic.fna.gz > {output}
    """
 #========
-
 
 
 # ------ PART 1 MUMmer --------
@@ -102,29 +382,26 @@ rule gnuplot:
 #========
 
 
-
-# ------ PART 2 Generate new dot plot --------
-# in the fist part, promer was called and .rplot and .fplot files were produced. These files have the alignment coordinates in the dot plot produced. These two files
-# are read to produce a new dot plot using R.
+# ----- Part 2 determine coverage -----
+# how much of reference was covered by the alignment?
 
 #========
-# calling samtools faidx to calculate the size of chromosomes
-rule faidx:
+# convert mummer coords file to bed format (only for reference)
+rule coords_to_bed:
    conda: "env.yml"
    input:
-      ref="data/Cfulv_R5_assembly_v4.fasta",
-      qry="data/GCA_000301015.1_CfCabog12_genomic.fna"
+      coords="output/nucmer_out.delta.filt.coords"
    output:
-      ref="data/Cfulv_R5_assembly_v4.fasta.fai",
-      qry="data/GCA_000301015.1_CfCabog12_genomic.fna.fai"
+      bed="output/nucmer_out.delta.filt.coords.bed"
    shell: """
-      samtools faidx {input.ref}
-      samtools faidx {input.qry}
+      awk 'OFS="\t" {{print $(NF-1),$1-1,$2}}' {input.coords} | bedtools sort -i stdin > {output.bed}
    """
 #========
 
 
-
+# ------ PART 2 Generate new dot plot --------
+# in the fist part, promer was called and .rplot and .fplot files were produced. These files have the alignment coordinates in the dot plot produced. These two files
+# are read to produce a new dot plot using R.
 #========
 # 
 rule new_dotplot:
@@ -140,3 +417,87 @@ rule new_dotplot:
       Rscript scripts/make_dotplot.R {input.fplot} {input.rplot} {input.ref_fai} {input.qry_fai} {output.dotplot}
    """
 #========
+
+
+#========
+# create a `genome` file from .fai to use with bedtools
+rule faidx_to_genome:
+   conda: "env.yml"
+   input:
+      fai="data/Cfulv_R5_assembly_v4.fasta.fai",
+   output:
+      genome="data/Cfulv_R5_assembly_v4.fasta.fai.genome",
+   shell: """
+      cut -f 1,2 {input.fai} | sort -k1,1 > {output.genome}
+   """
+#========
+
+
+
+
+#========
+# get regions of the genome with no coverage
+rule complement:
+   conda: "env.yml"
+   input:
+      bed="output/nucmer_out.delta.filt.coords.bed",
+      genome="data/Cfulv_R5_assembly_v4.fasta.fai.genome",
+   output:
+      comp="output/nucmer_out.delta.filt.coords.bed.complement"
+   shell: """
+      bedtools complement -i {input.bed} -g {input.genome} > {output.comp}
+   """
+#========
+
+
+
+#===
+# plot a histogram of the coverage of genes not fully covered
+rule plot_hist:
+   conda: "env.yml"
+   input:
+      bed="output/genes_coverage.bed"
+   output:
+      pdf="plots/hist_genes_not_fully_cov.pdf"
+   shell: """
+      Rscript scripts/plot_histogram.R {input.bed} {output.pdf}
+   """
+#===
+
+#=========
+rule sam2paf:
+   conda: "env.yml"
+   input:
+      sam="output/minimap2_out_filt.sam"
+   output:
+      paf="output/minimap2_out_filt.paf"
+   params:
+      flag="-p" # convert primary or supplementary alignments only
+   shell: """
+      paftools.js sam2paf {params.flag} {input.sam} > {output.paf}
+   """
+#=========
+
+
+#-------- MUM&Co test ---------
+
+rule get_mumco:
+   output:
+      directory("MUMandCo")
+   shell: """
+      git clone https://github.com/SAMtoBAM/MUMandCo
+   """
+
+
+rule mumco:
+   conda: "env.yml"
+   input:
+      "MUMandCo",
+      qry="data/GCA_000301015.1_CfCabog12_genomic_split.fna",
+      ref="data/Cfulv_R5_assembly_v4.fasta",
+   output:
+      directory("output/MUMandCo_output")
+   shell: """
+      bash MUMandCo/mumandco_v*.sh -r {input.ref} -q {input.qry} -g 62500000 -o MUMandCo -t 16
+      mv MUMandCo_output output/
+   """

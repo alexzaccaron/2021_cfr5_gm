@@ -1,0 +1,117 @@
+
+SAMPLES=['SRR1171046', 'SRR1171044', 'SRR1171045']
+
+
+rule all:
+   input:
+      "reads_downloaded",
+      #"hisat2-build_ok",
+      expand("output/{sample}.sam",sample=SAMPLES),
+      expand("output/{sample}.bam",sample=SAMPLES),
+      "output/featurecounts_out.txt",
+      "output/gene_counts.txt",
+      "output/gene_length.txt",
+      "output/gene_tpms.txt"
+
+
+#===========
+rule download:
+   input:
+   output:
+      touch("reads_downloaded"),
+      r1=expand("data/{sample}_1.fastq.gz", sample=SAMPLES),
+      r2=expand("data/{sample}_2.fastq.gz", sample=SAMPLES),
+   shell: """
+	   curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR117/006/SRR1171046/SRR1171046_1.fastq.gz -o "data/SRR1171046_1.fastq.gz"
+	   curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR117/006/SRR1171046/SRR1171046_2.fastq.gz -o "data/SRR1171046_2.fastq.gz"
+	   curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR117/004/SRR1171044/SRR1171044_1.fastq.gz -o "data/SRR1171044_1.fastq.gz"
+	   curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR117/004/SRR1171044/SRR1171044_2.fastq.gz -o "data/SRR1171044_2.fastq.gz"
+	   curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR117/005/SRR1171045/SRR1171045_1.fastq.gz -o "data/SRR1171045_1.fastq.gz"
+	   curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR117/005/SRR1171045/SRR1171045_2.fastq.gz -o "data/SRR1171045_2.fastq.gz"
+   """
+#===========
+
+
+
+
+
+#===========
+rule hisat2_map:
+   conda: "env.yml"
+   input:
+      flag_reads="reads_downloaded",
+      r1="data/{sample}_1.fastq.gz",
+      r2="data/{sample}_2.fastq.gz",
+   output:
+      sam="output/{sample}.sam"
+   shell: """
+	   hisat2 -x data/hisat2_idx/Cfulv_R5_assembly_v4.fasta \
+	      -p 8 \
+	      -1 {input.r1} \
+	      -2 {input.r2} \
+	      --max-intronlen 3000 \
+	      --summary-file output/{wildcards.sample}_summary.txt > {output.sam}
+   """
+#===========
+
+
+
+#===========
+rule samtobam:
+   conda: "env.yml"
+   input:
+      sam="output/{sample}.sam"
+   output:
+      bam="output/{sample}.bam"
+   shell: """
+	   samtools view -@ 4 {input.sam} -o {output.bam}
+   """
+#===========
+
+
+
+#===========
+rule featurecounts:
+   conda: "env.yml"
+   input:
+      bams=expand("output/{sample}.bam", sample=SAMPLES),
+      gtf="data/Cfulv_R5_assembly_v4_genes_v05.gtf"
+   output:
+      "output/featurecounts_out.txt"
+   shell: """
+	   featureCounts -p -T 8 -a {input.gtf} -o {output} {input.bams} 
+   """
+#===========
+
+
+
+#===========
+# make it easier to read files in R to calculate TPM
+rule featurecounts_preprocess:
+   conda: "env.yml"
+   input:
+      "output/featurecounts_out.txt"
+   output:
+      counts="output/gene_counts.txt",
+      lengths="output/gene_length.txt"
+   shell: """
+	   tail -n+2 {input} | sed 's/Geneid//g' | cut -f 1,7-10 > {output.counts}
+	   tail -n+2 {input} | sed 's/Geneid//g' | cut -f 1,6    > {output.lengths}
+   """
+#===========
+
+
+
+#===========
+# 
+rule calculate_tpm:
+   conda: "env.yml"
+   input:
+      counts="output/gene_counts.txt",
+      lengths="output/gene_length.txt"
+   output:
+      "output/gene_tpms.txt"
+   shell: """
+	   Rscript scripts/calculate_tpm.R {input.counts} {input.lengths} {output}
+   """
+#===========
