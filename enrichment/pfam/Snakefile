@@ -1,0 +1,46 @@
+
+
+rule all:
+   input:
+      "data/pfam_term2gene",
+      "data/pfam_term2name",
+      "done"
+
+
+#==========
+rule get_term2gene:
+   input:
+      pfam="data/interpro_out.tsv"
+   output:
+      term2gene="data/pfam_term2gene"
+   shell: """
+      awk 'FS="\t"{{print $5"\t"$1}}' {input.pfam} | sort -k2,2 > {output}
+   """
+#==========
+
+
+
+#==========
+rule get_term2name:
+   input:
+      pfam="data/interpro_out.tsv"
+   output:
+      term2name="data/pfam_term2name"
+   shell: """
+      cut -f 5,6 {input.pfam} | sort -u -k1,1 >  {output}
+   """
+#==========
+
+
+
+#==========
+rule enrichr:
+   input:
+      term2name="data/pfam_term2name",
+      term2gene="data/pfam_term2gene"
+   output:
+      touch("done")
+   shell: """
+      Rscript scripts/enrichr_pfam.R 
+   """
+#==========
